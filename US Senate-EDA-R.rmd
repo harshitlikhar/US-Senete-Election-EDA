@@ -1,0 +1,424 @@
+---
+title: "Mini-project-II"
+author: "Aditi Mulye, Keshav Likhar, Nikunj Malpani"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    css: style.css
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE,
+                 cache=TRUE,
+               prompt=FALSE,
+               tidy=TRUE,
+               comment=NA,
+               message=FALSE,
+               warning=FALSE)
+```
+
+## Introduction
+
+Many people studying politics in the United States believe that the country is becoming more ideologically polarized: either liberals are becoming more liberal, conservatives are becoming more conservative, or both. In either case, they believe that the middle of the political spectrum is being hollowed out.
+
+For the purpose of this project, we had been given a dataset consisting of voting data of different members of the senate ranging from year 1989 to 2014. Now, we will be using this vast and rich data to evaluate the change in polarity of members of the Senate over the years. 
+
+Let's see how we are able to gain insights from this data!
+
+### Data Description:
+
+We have records of Members and votes from year 1989 through 2014.
+
+* senator’s vote on each of the bills for which there was a roll call vote in that year and  description of the senators (name, id, state, party).
+* For most of the bills, the senators vote with “yea”, “nay” or abstain from taking part in the voting process.
+
+Thus, in order to conduct a statistical analysis, our first task was to reassign a numeric value of 1 (“yea”) and 0 (“nay”) and -1 (otherwise”).
+
+### Problem statement:
+
+To find the political ideologies of the people studying politics in the United States who believe that the country is becoming more ideologically polarized
+
+
+
+```{r}
+#installing all the required libraries
+library(tidyverse)
+library(dplyr)
+library(coop)
+library(ggplot2)
+library(devtools)
+library(ade4)
+library(viridis)
+library(ggrepel)
+library(ggbiplot)
+library(ggpubr)
+library(magrittr)
+```
+
+## Data Preparation
+
+One of the major tasks in the project was to deal with such huge amount of data of over 25 years with 2 csv files for each year. We came up with an idea of minimizing our efforts by making various functions for reading different files, deadling with null and categorical values as well as drawing plots for analysing our results, thus helping us reduce repititive efforts.
+
+```{r}
+votes_labelling <- function(vote) {
+  if(is.na(vote)) {
+    return(-1)
+  }
+  else if(vote == 'Yea') {
+    return(1)
+  }
+  else if(vote == 'Nay'){
+    return(0)
+  }
+  else {
+    return(-1)
+  }
+}
+```
+
+
+```{r}
+reading_votes_joined <- function(year) 
+  {
+  eval(parse(text = paste0("members_",year,"<<-read.csv('congress/",year,"/members.csv')")))
+  
+  eval(parse(text = paste0("votes_",year,"<<-read.csv('congress/",year,"/votes.csv')")))
+  
+  eval(parse(text = paste("votes_",year,"<<-join(members_",year,", votes_",year,", by='id', type = 'inner')", sep ="")))
+  eval(parse(text=paste("votes_", year, "_numeric<<-votes_",year, "[, c(-1:-6)]", sep= "")))
+  eval(parse(text=paste("votes_", year, "_recode<<-apply(votes_",year,"_numeric, 1:2, votes_labelling)",sep="")))
+  
+}
+
+```
+
+
+
+### MDS or Multidimensional Scaling Plots for describing the relationships in several years
+
+Multidimensional scaling (MDS) is a technique for visualizing distances between objects, where the distance is known between pairs of the objects. Here, we used cmdscale() which is a stats package and is used to compute classical (metric) multidimensional scaling. The advantage with MDS is that you can specify the number of dimensions you want in the output data.
+
+
+```{r}
+getting_mds_projections <- function(votes_df) {
+  votes_similarity <- t(votes_df) %>%
+    cosine()
+  
+  votes_dist <- 1-votes_similarity
+  
+  mds_points <- votes_dist %>%
+    cmdscale() %>%
+    data.frame()
+  
+  return(mds_points)
+}
+```
+
+```{r}
+votes_mds <- function(year){
+  eval(parse(text=paste("votes_",year, "_mds<<-getting_mds_projections(votes_",year, "_recode)", sep="")))
+  eval(parse(text=paste("votes_",year, "_mds_members<<-data.frame(members_",year,",votes_",year, "_mds)", sep="")))
+  
+}
+```
+
+
+```{r}
+votes_ggplot <- function(year, title) {
+  eval(parse(text=paste("ggplot(votes_",year,"_mds_members,aes(x=X1, y=X2)) + geom_point(aes(color=party)) + geom_text_repel(aes(label = last_name))",sep=""))) + 
+    ggtitle(paste0('Distance between Democrats and Republicans for the Year ', title)) + xlab("MDS (X1)") +
+  ylab("MDS (X2)") + scale_x_continuous(limits = c(-0.5,0.5)) + scale_y_continuous(limits = c(-0.6,0.6))+ theme_bw() +
+  theme(plot.title = element_text(face="bold.italic", size=14, family = "Alegreya", hjust = .5)) 
+}
+
+```
+
+
+### Comparision of Polarization for two years
+
+To determine whether American politics is becoming more ideologically polarized, that is, whether liberals are becoming more liberal, conservatives are becoming more conservative, or both, the first step we took was to try to understand how the ideologies of both parties have changed over time, that is, how they are now compared to how they were previously. We achieved this by looking at all of the senators' voting records from a previous session (1989) and a later session (2014), assuming that there would be a considerable difference in polarization between the two years.
+
+We have used multi-dimensional scaling on a measure of **Eucladian Distance** between senators for both the years and finally plotted those distances in two seperate graphs that can be clearly seen below. 
+
+One of the most important things we considered before drawing the plots for both the years was to ensure that they lie on the same scale. This was necessary as it helped us compare the two years in a fair and efficient manner.
+
+```{r}
+reading_votes_joined(1989)
+votes_mds(1989)
+# votes_ggplot(1989, 1989)
+```
+
+```{r}
+ggplot(votes_1989_mds_members, aes(x=X1, y=X2)) + 
+  geom_point(aes(color=party)) + 
+  geom_text_repel(aes(label = last_name)) + 
+  labs(title="Figure 1: Distance between Democrats and Republicans for the Year 1989",
+       x="MDS (X1)", y = "MDS (X2)") +scale_x_continuous(limits = c(-0.5,0.5)) + scale_y_continuous(limits = c(-0.6,0.6)) + theme_bw()+ 
+  theme(plot.title = element_text(face="bold.italic", size=10, family = "Alegreya", hjust = .5)) 
+```
+
+
+
+* In the above figure(Fig.1), we have plotted a graph to see polarity between the **Democrats** and **Republicans** for the year 1989. The plot appears to be really well divided by X1 and seems to have constant variation in X2 for both **Democrats** and **Republicans**.
+
+* Even just by looking at the above graph(Fig.1), we can easily conclude that there does not seem to be a significant difference in the means of clusters between both the groups, **Democrats** and **Republicans**. In other words, because the data is less polarized, it's possible that some senators from both parties will occasionally agree with the opposition party's judgments. Both parties have nearly identical variance distributions.
+
+* We can observe that there was a lot of overlap between the senators in 1989, i.e., the senators weren't overly polarized, which resulted in overlap between the Republican and Democratic philosophies.
+
+* Although there are a few outliers in both the groups (we have marked the outliers seperately as Matsunaga, Gore, Symms, Armstrong), **Democrats** and **Republicans**, however, we may easily conclude that there are no major outliers (except Matsunaga) which go against the entire group in both the cases. 
+
+* Let us also try looking at one of the later years and see if anything changes with time.
+
+
+```{r}
+reading_votes_joined(2014)
+votes_mds(2014)
+# votes_ggplot(2014, 2014)
+```
+
+```{r}
+ggplot(votes_2014_mds_members, aes(x=X1, y=X2)) + 
+  geom_point(aes(color=party)) + 
+  geom_text_repel(aes(label = last_name)) + 
+  labs(title="Figure 2: Distance between Democrats and Republicans for the Year 2014",
+       x="MDS (X1)", y = "MDS (X2)") +scale_x_continuous(limits = c(-0.5,0.5)) + scale_y_continuous(limits = c(-0.6,0.6)) + theme_bw()+ 
+  theme(plot.title = element_text(face="bold.italic", size=10, family = "Alegreya", hjust = .5))  
+```
+
+
+* In the above figure (Figure 2), for year 2014, it has been noted that a new party, the Independent Party, has emerged, consisting of senator who has an independent viewpoint. Senator Sanders is a member of the Independent Party, yet he appears to be more aligned with the Democratic Party than the Republican Party, as seen by his closeness to the Democratic Party.
+
+* Just a single look at the figure helps us conclude that the difference between the cluster means of both the groups has increased than for year 1989. The patterns between the two years are not very similar to each other and appears more 2-D than for the year 1989. The number of outliers for both the groups have also increased in 2014.
+
+* Additionally, we can also notice that a new party has come up in 2014 with only one data point and the points seem to be more dispersed for **Republicans** than for the **Democrats**. We may also say that polarity has increased in 2014 than what it was in 1989.
+
+
+We can see from this research that both parties are not extremely polarized in 1989, and there appears to be an overlap of ideology between them (Fig-1). In 2014 (Fig. 2), however, we can see that there is a clear polarization between parties as there is a clear polarization between parties.
+With the exception of a few outliers in both parties, there is no longer any overlap between senators. We may conclude that the trends in both years (1989 and 2014) are not the same, and that polarization has increased significantly between the two. In 2014, they appear to fall on a one-dimensional liberal/conservative axis, whereas they did not in 1989.
+
+> Therefore, we establish that there is a certain increase in polarity from 1989 to 2014. To dive deeper into the investigation, we probe into its trend systematically over time.
+
+
+```{r}
+Years <- 1989:2014
+
+for (year in Years){
+  reading_votes_joined(year)
+  votes_mds(year)
+}
+```
+
+```{r}
+d_mds1 <- c()
+r_mds1 <- c()
+d_mds2 <- c()
+r_mds2 <- c()
+dist <- c()
+```
+
+
+### Evaluation of Polarization over time
+
+From the investigations conducted above, it was observed that the X1 component of MDS captured significant amount of variations in data. Therefore, one way of investigating the polarization over time would be to study the differences between the means of the clusers formed for both the groups over the years.
+
+* For calculating the mean distances of clusters between **Democrats** and **Republicans**, we considered X1, X2 for both the parties and then calculated the Euclidean Distance, thus helping us capture the dissimilarities between the two groups.
+
+* The methodology we used here was to consider the X1, X2 component of MDS with their repsective years for **Democrats** and **Republicans** and then use it to calculate the Euclidean distance.
+
+### Euclidean Distance
+
+$$d(a,b) = \sqrt{\sum_{i=1}^n(a_i - b_i)^2}$$
+
+
+
+```{r}
+for (year in Years) {
+  
+  eval(parse(text=paste("x<-votes_",year,"_mds_members %>% dplyr::group_by(party) %>% dplyr::summarize(mean1=mean(X1),mean2=mean(X2)) %>% pivot_wider(names_from=party, values_from = c(mean1, mean2))", sep="")))
+  
+  d_mds1 <- c(d_mds1, x$mean1_D)
+  r_mds1 <- c(r_mds1, x$mean1_R)
+  d_mds2 <- c(d_mds2, x$mean2_D)
+  r_mds2 <- c(r_mds2,x$mean2_R)
+  dist <- c()
+}
+```
+
+
+```{r}
+dist <- ((d_mds1-r_mds1)^2+ (d_mds2-r_mds2)^2)^0.5
+```
+
+
+```{r}
+vo <- as.data.frame(cbind(dist, Years))
+```
+
+```{r}
+ggplot(vo) + geom_line(aes(x=Years, y=dist)) + labs(title="Figure 3: Plot between distances of Democrats and Republicans with Year",
+       x="Year", y = "Distance") + theme_bw() + theme(plot.title = element_text(face="bold.italic", size=10, family = "Alegreya", hjust = .5))
+```
+
+
+
+* As we can clearly see in Fig 3, although there are minor variations here and there, but as the distance has increased from 0.1 to 0.5, the polarity seems to have increased over the time.
+
+* We can see that polarization is very low in 1989 (as shown in Fig-1) but then begins to increase in the following years (1990 - 1993) before decreasing in 1994. While it increased more rapidly than before in 1995, it began to decrease in subsequent years, but the parties remain obviously split as they are apart. There are a few outliers, such as the years 200, 2009 and 2010, when the parties are sharply polarized.
+
+* Thus, it can even be implied that the middle of the political spectrum is being hollowed out gradually with time and people seem to become more and more ideologically polarized. In other words, either liberals are becoming more liberal, conservatives are becoming more conservative, or both.
+
+* Aditionally, we also wanted to know whether the polarity (distance) was caused by either one of **Democrats** or **Republicans**, so we went ahead and plotted X1 component of MDS to see how it was varying with time.
+
+
+```{r}
+vo_d <- as.data.frame(cbind(d_mds1, Years))
+vo_r <- as.data.frame(cbind(r_mds1, Years))
+```
+
+```{r}
+ggplot(NULL)+ 
+  geom_line(data = vo_d, aes(x=Years, y=d_mds1),color = 'red') + 
+  geom_line(data = vo_r, aes(x=Years, y=r_mds1), color = 'blue')  + 
+  labs(title="Figure 4: Plot of X1 (MDS) for Democrats and Republicans with Year",x="Year", y = "X1 (MDS)") + 
+  theme_bw() + theme(plot.title = element_text(face="bold.italic", size=10, family = "Alegreya", hjust = .5))
+```
+
+
+* In Figure 4, we have plotted X1 component of MDS for **Republicans** as well as **Democrats**. It is really interesting to know that the gap between the parties has increased with time, but they seem to switch sides for almost every other year.
+
+* We weren't able to figure out why exactly there was a flip happening for **Democrats** as well as **Republicans** for almost every other year. One of the initial guesses that we came up with was that the ruling party might be changing for every other year, thus resulting in a chnage in their sides with respect to a bill for a given year.
+
+* Successively, we were also able to conclude that the polarization and distances between the two parties was not due to any one particular party, but, both the parties contributed equally in it.
+
+* Finally, it may be claimed that party polarization has intensified in recent years, and senators have backed up the parties when they most needed unity. However, there may be numerous elements that influence the senator's judgment on bills that are beyond the purview of these visualizations, and thus reaching conclusions like this when there is only one factor, the variance, may not be valid.
+
+* We can see that there is a significant decrease in the polarization in 2001 and 2002, this might be because of 9/11 incident and after that many bills may be passed and agreed upon by both the parties keeping politics aside and supporting the nation.
+For year, 2009 and 2010 we can see that there is a significant increase in the polarization, this might be because of the US financial crisis, leading to severe worldwide economic crisis. This might have caused the opposition party to put the blame on the ruling party and thus rejecting or opposing the bills.
+
+### Ideological position of one senator
+
+Since we had already looked into the change in polarity of the two parties over the years, we were also interested in knowing if there was a particular senator who was influencing this change.
+
+One approach to begin answering this challenge was to look at a particular senator who served each year and compare the parties to that senator. We measured the two parties' positions relative to the senator if the senator's politics haven't changed over time.
+
+To do so, we looked at senators from both parties who had served for the whole 26-year period. There are 13 senators from various states in this category. We chose two senators from among the 13 senators:
+1) Senator Mitch McConnell (R-Kentucky) is a member of the Republican Party.
+2) Senator John McCain (D-Arizona) is a member of the Democratic Party.
+3) Senator Barbara Mikulski (D) is a member of the Democratic Party. 
+4) Senator Lisa Murkowski (R) is a member of the Republican Party.
+
+The approach we took for performing this action can be listed in the following steps:
+
+* Identify all of the senators who voted on bills over the years.
+
+* Choose a senator who can assist us understand their polarity in relation to a particular political party.
+
+
+```{r}
+reading_votes_joined <- function(year) 
+  {
+  eval(parse(text = paste0("members_",year,"<<-read.csv('congress/",year,"/members.csv')")))
+  
+  eval(parse(text = paste0("votes_",year,"<<-read.csv('congress/",year,"/votes.csv')")))
+  
+  eval(parse(text = paste("votes_",year,"<<-join(members_",year,", votes_",year,", by='id', type = 'inner')", sep ="")))
+  eval(parse(text=paste("votes_", year, "_numeric<<-votes_",year, "[, c(-1:-6)]", sep= "")))
+  eval(parse(text=paste("votes_", year, "_recode<<-apply(votes_",year,"_numeric, 1:2, votes_labelling)",sep="")))
+  
+}
+
+```
+
+```{r}
+mitch = c()
+john = c()
+mur = c()
+robert = c()
+Barbara = c()
+```
+
+```{r}
+
+votes_mds <- function(year){
+  eval(parse(text=paste("votes_",year, "_mds<<-getting_mds_projections(votes_",year, "_recode)", sep="")))
+  eval(parse(text=paste("votes_",year, "_mds_members<<-data.frame(members_",year,",votes_",year, "_mds)", sep="")))
+  x = eval(parse(text = paste("votes_",year,"_mds_members[votes_",year,"_mds_members[,'last_name']=='McCain',]$X1",sep = "")))
+  y = eval(parse(text = paste("votes_",year,"_mds_members[votes_",year,"_mds_members[,'last_name']=='McConnell',]$X1",sep = "")))
+  z = eval(parse(text = paste("votes_",year,"_mds_members[votes_",year,"_mds_members[,'last_name']=='Murkowski',]$X1",sep = "")))
+  v = eval(parse(text = paste("votes_",year,"_mds_members[votes_",year,"_mds_members[,'first_name']=='Barbara',]$X1",sep = "")))
+  
+  
+  # eval(parse(text = paste("print(votes_",year,"_mds_members[votes_",year,"_mds_members[,'last_name']=='McConnell',]$X1)",sep = "")))
+  # votes_1989_mds_members[votes_1989_mds_members[,'last_name']=='McCain',]
+}
+```
+
+
+
+```{r}
+Years <- 1989:2014
+
+for (year in Years){
+  reading_votes_joined(year)
+  votes_mds(year)
+  x = eval(parse(text = paste("votes_",year,"_mds_members[votes_",year,"_mds_members[,'last_name']=='McCain',]$X1",sep = "")))
+  y = eval(parse(text = paste("votes_",year,"_mds_members[votes_",year,"_mds_members[,'last_name']=='McConnell',]$X1",sep = "")))
+  z = eval(parse(text = paste("votes_",year,"_mds_members[votes_",year,"_mds_members[,'last_name']=='Murkowski',]$X1",sep = "")))
+  v = eval(parse(text = paste("votes_",year,"_mds_members[votes_",year,"_mds_members[,'first_name']=='Barbara',]$X1",sep = "")))
+
+
+  john = append(john,x)
+  mitch = append(mitch,y)
+  mur = append(mur,z)
+  Barbara = append(Barbara,v)
+}
+```
+
+
+```{r}
+john_df <- as.data.frame(cbind(john, Years))
+mitch_df <- as.data.frame(cbind(mitch, Years))
+mur_df <- as.data.frame(cbind(mur, Years))
+Bar_df <- as.data.frame(cbind(Barbara, Years))
+```
+
+
+Now after Step 1, we found a set of ~15 senators who were present in all the datasets. Now, to choose a senator, we plotted a graph like the one below [Fig 5] for all of them and checked the trends. 
+
+
+```{r}
+
+fig = ggplot(NULL)+ geom_line(data = vo_d, aes(x=Years, y=d_mds1),color = 'red') + ylab("Democrats") + theme_bw()
+fig1 =  ggplot(NULL) + geom_line(data = vo_r, aes(x=Years, y=r_mds1), color = 'blue') + ylab("Republicans") + theme_bw()
+fig2 = ggplot(NULL) + geom_line(data = john_df, aes(x=Years, y=john),color = 'orange') + ylab("John ")  + theme_bw()
+fig3 = ggplot(NULL)+ geom_line(data = mitch_df, aes(x=Years, y=mitch),color = 'darkgreen') + ylab("Mitch ")  + theme_bw()
+fig4 = ggplot(NULL)+ geom_line(data = mur_df, aes(x=Years, y=mur),color = 'darkgreen') + ylab("Murkowski") + theme_bw()
+fig5 = ggplot(NULL)+ geom_line(data = Bar_df, aes(x=Years, y=Barbara),color = 'gold') + ylab("Mikulski") + theme_bw()
+
+```
+
+
+
+```{r}
+plot <- ggarrange(fig,fig1,fig2,fig3,fig5,fig4, ncol=2, nrow = 3)
+# ggarrange(ba,mi,fa, ncol=3, nrow=1, common.legend = TRUE,legend="bottom")
+
+annotate_figure(plot, top = text_grob("Figure 5: X1(MDS) with Year for different Republicans and Democrats", face = "bold.italic", size = 12))
+
+```
+
+* We noticed that the stance of Mitch McConnell appears to be relatively same with the party he is associated with (Republican) throughout the years, whereas the stance of John McCain kept changing and was not constant with the party he is associated with (Democratic). There also seems to be a change in the idealogy within parties over the years with respect to these senators.
+
+* Interestingly, Baraba Milkulski who belong to the Democrat party showed huge variations in her opinions throughout the years and doesn't always go with the parties views.
+
+* Lisa Murkowski seems to follow the party views till 2011, but after that, the views of the senator has more likely been neutral and not in support of one party.
+
+Since, there are few members who changed their views with time from their respective political parties, we cannot assign the blame to one or the other members or parties for polarization. Their might be different reasons for it.
+
+
+### Conclusion: 
+
+* We notice that there has been an increase in polarization between the two parties over the years (relative distances has increased with time). From the observations made above [Fig 4], one could speculate whether Republicans have become more conservative over the years. However, we also notice that with the increased polarization between the two parties, most of the senators have changed their stand over the years in support of the parties that they belong to.
+
+* Finally, it may be argued that party polarization has increased in recent years, and senators have backed up the parties at a time when they needed unity the most. However, there may be a number of factors that influence a senator's decision on a bill that are outside the scope of these visualizations, thus drawing conclusions based on only one aspect, may not be valid.
